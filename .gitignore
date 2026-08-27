@@ -1,0 +1,17 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Dependencies / caches (if added later)
+node_modules/
+__pycache__/
+.venv/
+dist/
+build/
