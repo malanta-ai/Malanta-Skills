@@ -1,6 +1,6 @@
 # Malanta Skills
 
-Public and shareable **agent skills** for Malanta Pre-Attack Prevention.
+Public **agent skills** for Malanta Pre-Attack Prevention.
 
 This repository packages skills that any AI agent, IDE harness, or automation runner can load to work with Malanta products and APIs correctly: routing, endpoint contracts, investigation workflows, and safe handling of credentials and enrichment data.
 
@@ -14,7 +14,7 @@ More Malanta skills may be added here over time (one folder per skill).
 
 ## Who this is for
 
-- Customers and prospects integrating Malanta into agent workflows
+- Customers and partners integrating Malanta into agent workflows
 - Security engineers wiring Malanta into Cursor, Claude, Copilot-style agents, or custom harnesses
 - Partners packaging Pre-Attack Prevention into their own tooling
 
@@ -31,16 +31,29 @@ Malanta Skills/
 
 ## Quick start
 
-1. Clone this repository (private / internal access required).
+1. Clone or download this repository (public, read-only).
 2. Open the skill folder you need (start with [`malanta-api-skill/`](./malanta-api-skill/)).
 3. Follow that folder’s README to attach `SKILL.md` to your agent or harness.
 4. Supply a Malanta API key via environment / secrets manager. Never commit keys.
+
+```bash
+git clone https://github.com/malanta-ai/Malanta-Skills.git
+```
+
+## Distribution policy (read-only)
+
+This repository is a **distribution source only** for prospects, customers, and partners.
+
+- Clone and download are welcome
+- External contributions are **not** accepted (no issues, discussions, forks, or pull requests from outside Malanta)
+- Only Malanta org members can change the repository
+- Treat investigation outputs according to your organization’s data-handling policy
 
 ## Security
 
 - Do not commit API keys, `.env` files, or customer investigation dumps
 - Skills instruct agents never to print or log credentials
-- Treat investigation outputs according to your organization’s data-handling policy
+- Report suspected key exposure to Malanta support; rotate the key
 
 ## Support
 
@@ -49,4 +62,4 @@ Malanta Skills/
 
 ## License / distribution
 
-Internal Malanta distribution for customers, prospects, and partners. Redistribution outside authorized channels requires Malanta approval.
+Published by Malanta Ltd. for customer, prospect, and partner use with the Malanta API. Skills document the public Malanta API surface only. Redistribution of modified copies as official Malanta materials requires Malanta approval.

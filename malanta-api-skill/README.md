@@ -29,7 +29,7 @@ Store the key as a secret, for example:
 
 ```bash
 export MALANTA_API_KEY="malanta_xxxxxxxx"
-# or MALANTA_NG_API_KEY depending on your environment naming
+# Use the env var name your Malanta integration documents
 ```
 
 Never put the key in the skill file, prompts committed to git, or chat logs.
