@@ -1,22 +1,23 @@
 ---
 name: malanta-api-public
 description: >
-  Malanta Pre-Attack Prevention via the Malanta API. Use when investigating domains
-  or FQDNs for pre-attack threat intelligence, IoPA/IoC classification, attack clusters,
-  campaign mapping, batch triage, watchlist monitoring, WHOIS/DNS/certificate enrichment,
-  or ATOMIC/CHAINED investigation workflows. Single-file skill for any AI agent or model.
-version: 4.0-public
+  Malanta Pre-Attack Prevention via the Malanta API. Use when investigating domains,
+  FQDNs, or IP addresses for pre-attack threat intelligence, IoPA/IoC classification,
+  attack clusters, campaign mapping, batch triage, watchlist monitoring,
+  WHOIS/DNS/certificate enrichment, IP reputation, or ATOMIC/CHAINED investigation
+  workflows. Single-file skill for any AI agent or model.
+version: 4.1-public
 provider: Malanta
 category: Pre-Attack Prevention
 ---
 
 # Malanta API Skill
 
-**Version:** 4.0-public  
+**Version:** 4.1-public  
 **API name:** Malanta API  
 **Compatibility:** Any AI agent or model that can call HTTPS APIs and follow structured instructions
 
-Use this skill to query the Malanta API for Pre-Attack Prevention intelligence: classify domains during the adversary setup window, expand attack clusters, and enrich with WHOIS, DNS, and certificates.
+Use this skill to query the Malanta API for Pre-Attack Prevention intelligence: classify domains and IP addresses during the adversary setup window, expand attack clusters, and enrich with WHOIS, DNS, and certificates.
 
 ---
 
@@ -34,7 +35,7 @@ Use this skill to query the Malanta API for Pre-Attack Prevention intelligence: 
 - Never fabricate API results, verdicts, scores, APT names, or cluster members
 - Empty/`null`/`[]` means no data - say so
 - Separate API fields from analytical judgment; use High / Medium / Low confidence on judgments
-- `UNKNOWN` means not flagged as attacker infrastructure - not proof the domain is safe
+- `UNKNOWN` means not flagged as attacker infrastructure - not proof the domain or IP is safe
 
 ### Handling enrichment data
 
@@ -55,6 +56,7 @@ Malanta is a Pre-Attack Prevention platform. It identifies and classifies advers
 | **Setup window detection** | Temporal intelligence between infrastructure creation and attack |
 | **Campaign mapping** | Expand from one domain to the operator network via clusters |
 | **APT attribution at TA0042** | Threat-actor names from infrastructure identity (`apt_names[]`) |
+| **IP reputation** | Classify IPv4 addresses for IoPA/IoC labels, APT, and cluster membership |
 
 **Key terminology:** Adversary Infrastructure Identity, common identity attributes, IoPAs.  
 **Category:** Pre-Attack Prevention.
@@ -79,6 +81,9 @@ BASE_URL="https://app.malanta.ai/data"
 API_KEY="${MALANTA_API_KEY}"
 
 curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
+  -H "x-api-key: $API_KEY"
+
+curl -sS "$BASE_URL/v1/ips/203.0.113.45/reputation" \
   -H "x-api-key: $API_KEY"
 ```
 
@@ -113,20 +118,24 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 
 | Field | Notes |
 |-------|-------|
-| `type` | `domain-name`, `fqdn`, or `cluster-id` |
+| `type` | `domain-name`, `fqdn`, `cluster-id`, or `ipv4-addr` |
 | `value` | Canonical display value |
 | `indicator_id` | Stable UUID when resolvable |
-| `ip_addr_hex` | Null for domain indicators |
+| `ip_addr_hex` | Set for IP indicators; null for domain indicators |
 
 ### Input validation (pre-call)
 
 | Check | Rule | On failure |
 |-------|------|------------|
 | `/v1/domains/` routes | Must be eTLD+1 (registered apex) | Use `/v1/fqdns/` for subdomains |
+| `/v1/ips/` reputation | IPv4 address string | Do not pass domains or FQDNs |
 | Batch POST | Max 100 items | Chunk requests |
 | Cluster `?indicator=` | Domain only | Email/IP return 422 |
-| Standalone IP lookup (reputation/geo by IP address) | Out of scope for this skill | Use another provider |
-| Domain hosting IPs | Use `GET /v1/domains/{domain}/ip-ranges` | Never call `/ipinfo` (path does not exist) |
+| Domain hosting IPs (ASN/geo/ranges) | Use `GET /v1/domains/{domain}/ip-ranges` | Never call `/ipinfo` (path does not exist) |
+| Standalone IP reputation | Use `GET /v1/ips/{ip}/reputation` or batch `POST /v1/ips/reputation` | Do not use `/ip-ranges` for this |
+| IP geolocation / port scan / CVE by IP | Out of scope for this skill | Use another provider |
+
+**Do not confuse** domain hosting enrichment (`/ip-ranges`, triggered by `available.ipinfo`) with **IP reputation** (`/v1/ips/.../reputation`).
 
 ---
 
@@ -145,12 +154,13 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 2. Lead with verdict. Highlight **IOPA** as the pre-attack signal
 3. Apply noise filters before expansion
 4. Domain routes need eTLD+1; subdomains use `/v1/fqdns/`
-5. `available.*` on `/info` are boolean flags, not URL paths. Map them to real endpoints (see 5.1). Never invent paths like `/ipinfo`
-6. Use the **Malanta API** only as defined here
+5. Raw IPv4 → IP reputation routes. Domain → domain routes. Never invent paths like `/ipinfo`
+6. `available.*` on `/info` are boolean flags, not URL paths. Map them to real endpoints (see 5.1)
+7. Use the **Malanta API** only as defined here
 
 ### Result presentation
 
-**Reputation**
+**Reputation (domain or IP)**
 
 - Lead with `MALICIOUS` or `UNKNOWN`
 - If MALICIOUS: score band (HIGH/MEDIUM/LOW), labels, APT names, cluster count
@@ -161,7 +171,8 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 
 **Clusters**
 
-- Lead with `cluster_type` (why members are linked)
+- Lead with `cluster_type` (why members are linked) when full cluster detail is fetched
+- On IP/domain reputation responses, `clusters[]` may be membership summaries (`cluster_id`, `member_count`, `joined_at`, `reputation`) - suggest `GET /v1/clusters/{cluster_id}` for full detail
 - Confidence band, lifecycle, member count, APT if present
 - Smaller high-score CONFIRMED clusters are stronger signal than huge low-conviction sets
 - Member verdict UNKNOWN inside a MALICIOUS cluster still matters: membership is the signal
@@ -170,10 +181,11 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 
 | Current result | Priority | Secondary |
 |----------------|----------|-----------|
-| MALICIOUS | Investigate attack cluster / operator map | WHOIS / DNS |
+| MALICIOUS domain | Investigate attack cluster / operator map | WHOIS / DNS |
+| MALICIOUS IP | Deep dive top `clusters[]` via cluster-by-id | Batch related IPs if user supplies a list |
 | MALICIOUS + clusters | Deep dive cluster / classify members | Enrich seed |
-| Batch: many MALICIOUS | Shared campaign? (cluster lookup) | Highest score first |
-| IOPA present | Expand related setup infrastructure | Registration timing |
+| Batch: many MALICIOUS | Shared campaign? (shared `cluster_id`) | Highest score first |
+| IOPA present | Expand related setup infrastructure | Registration timing (domains) |
 | UNKNOWN | Re-check later / other providers | - |
 
 ---
@@ -184,12 +196,15 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 
 | User intent | Endpoint |
 |-------------|----------|
-| What do we know / quick check | `GET /v1/domains/{domain}/info` |
-| Full reputation / APT / pre-attack | `GET /v1/domains/{domain}/reputation` |
-| Campaign / related attacker infra | `GET /v1/clusters?indicator={domain}` |
+| What do we know / quick check (domain) | `GET /v1/domains/{domain}/info` |
+| Full domain reputation / APT / pre-attack | `GET /v1/domains/{domain}/reputation` |
+| Full IP reputation / APT / pre-attack | `GET /v1/ips/{ip}/reputation` |
+| Batch classify domains / which are IOPA | `POST /v1/domains/reputation` body `{"domains":[...]}` |
+| Batch classify IPs / which are IOPA | `POST /v1/ips/reputation` body `{"ips":[...]}` |
+| Campaign / related attacker infra (domain seed) | `GET /v1/clusters?indicator={domain}` |
 | Cluster by id | `GET /v1/clusters/{cluster_id}` |
-| Classify a list / which are IOPA | `POST /v1/domains/reputation` body `{"domains":[...]}` |
-| Sender domains from email / DNS log destinations | Same reputation GET or POST after extraction |
+| Sender domains from email / DNS log destinations | Domain reputation GET or POST after extraction |
+| Firewall / proxy / SIEM IPs | IP reputation GET or POST |
 
 ### Tier 2 - Enrichment
 
@@ -202,11 +217,11 @@ curl -sS "$BASE_URL/v1/domains/example.com/reputation" \
 | Code repos | `GET /v1/domains/{domain}/code-repos` |
 | Subdomain DNS/certs/repos | `GET /v1/fqdns/{fqdn}/dns-records` or `/certificates` or `/code-repos` |
 
-**Do not call** `/v1/domains/{domain}/ipinfo` or any `/ipinfo` path. That endpoint does not exist. When `/info` returns `available.ipinfo: true`, call **`/ip-ranges`**.
+**Do not call** `/v1/domains/{domain}/ipinfo` or any `/ipinfo` path. That endpoint does not exist. When `/info` returns `available.ipinfo: true`, call **`/ip-ranges`** (hosting enrichment), not IP reputation.
 
 ### Out of scope for this skill
 
-Malware sandboxing, file hashes, CVE lookup, email header parsing, PCAP decode, URL screenshots, dark web monitoring, standalone IP reputation/geolocation/port scan by IP address. Parse elsewhere, then enrich extracted domains with Malanta.
+Malware sandboxing, file hashes, CVE lookup, email header parsing, PCAP decode, URL screenshots, dark web monitoring, IP geolocation-only lookups, port scans. Parse elsewhere, then enrich extracted domains or IPs with Malanta reputation where applicable.
 
 ---
 
@@ -231,7 +246,7 @@ Use `/reputation` when you need labels, APT, IoC sources, cluster membership det
 
 ### 5.2 GET /v1/domains/{domain}/reputation
 
-Full classification.
+Full domain classification.
 
 | Field | Description |
 |-------|-------------|
@@ -246,20 +261,70 @@ Full classification.
 
 **Batch:** `POST /v1/domains/reputation` with `{"domains":["a.com","b.com"]}` (max 100). `data` is an array in input order. Batch is current-state only (no temporal params).
 
-### 5.3 GET /v1/clusters?indicator={domain}
+### 5.3 GET /v1/ips/{ip}/reputation
 
-Returns attack clusters for a domain. Optional `?malicious=true`, `?limit=`, `?cursor=`.
+Full **IP reputation** classification for a single IPv4 address.
+
+```bash
+curl -sS "$BASE_URL/v1/ips/203.0.113.45/reputation" \
+  -H "x-api-key: $API_KEY"
+```
+
+| Field | Description |
+|-------|-------------|
+| `indicator.type` | `ipv4-addr` |
+| `indicator.value` | Queried IPv4 string |
+| `indicator.ip_addr_hex` | Hex encoding of the address (when present) |
+| `reputation.verdict` | `MALICIOUS` or `UNKNOWN` |
+| `reputation.labels` | `IOPA`, `IOC`, or both |
+| `reputation.malicious_score` | 0.0-1.0 or null |
+| `reputation.malicious_score_band` | `HIGH`, `MEDIUM`, `LOW`, or null |
+| `apt_names` | Threat-actor attribution |
+| `ioc_sources` | Feed / source names |
+| `context` | Additional context array (may be empty) |
+| `domain_status` | Often null on IP responses |
+| `clusters[]` | Membership summaries: `{ cluster_id, member_count, joined_at, reputation }` |
+| `timestamps` | `first_observed_at`, `last_classified_at`, `last_observed_at` |
+
+**Batch:** `POST /v1/ips/reputation` with `{"ips":["1.2.3.4","5.6.7.8"]}` (max 100).
+
+```bash
+curl -sS -X POST "$BASE_URL/v1/ips/reputation" \
+  -H "x-api-key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"ips":["203.0.113.45","198.51.100.10"]}'
+```
+
+- `data` is an array of per-IP objects (same fields as single GET `data`, plus embedded `indicator`)
+- Batch is current-state only (no temporal params)
+- `query.indicator` may be null on batch responses
+- Prefer batch when the user supplies multiple IPs
+
+**Criteria for choosing IP reputation**
+
+| Input / prompt | Call |
+|----------------|------|
+| Single IPv4 ("is this IP malicious?") | `GET /v1/ips/{ip}/reputation` |
+| List of IPv4s / batch triage / watchlist of IPs | `POST /v1/ips/reputation` |
+| Domain hosting / ASN / geo for a domain | `GET /v1/domains/{domain}/ip-ranges` (not IP reputation) |
+| Domain classification | Domain `/info` or `/reputation` |
+
+### 5.4 GET /v1/clusters?indicator={domain}
+
+Returns attack clusters for a **domain**. Optional `?malicious=true`, `?limit=`, `?cursor=`.  
+Cluster lookup by IP indicator is not supported on this route (email/IP return 422). For IPs, use `clusters[]` from IP reputation, then `GET /v1/clusters/{cluster_id}`.
 
 **Cluster object (high level):** `cluster_id`, `cluster_class`, `cluster_type` (`SHARED_REGISTRANT_CLUSTER` | `OWNERSHIP_TREE_CLUSTER` | `SHARED_CERTIFICATE_CLUSTER`), `confidence` / `confidence_band`, `lifecycle_status`, `member_count`, `members_truncated`, timestamps, `reputation`, `apt_names`, `ioc_sources`, `members[]`.
 
 **Member object:** `indicator`, `joined_at`, observation times, per-member `reputation`, `apt_names`, `ioc_sources`.
 
-### 5.4 GET /v1/clusters/{cluster_id}
+### 5.5 GET /v1/clusters/{cluster_id}
 
 Full cluster by id. **404** if not found (treat as missing; do not invent members).  
-`cluster_id` is a stable join key across investigations (STIX: `intrusion-set--<cluster_id>`).
+`cluster_id` is a stable join key across investigations (STIX: `intrusion-set--<cluster_id>`).  
+Works for cluster IDs discovered from domain or IP reputation responses.
 
-### 5.5 Enrichment
+### 5.6 Enrichment
 
 **WHOIS** `GET /v1/domains/{domain}/whois`  
 Params: `?history=true`, `?since=`, `?until=`.  
@@ -277,7 +342,8 @@ Fields: `record_type`, `value`, `target`, `ttl`, `period`.
 **IP ranges (domain hosting)** `GET /v1/domains/{domain}/ip-ranges`  
 Current-only. Cursor-paged. Returns IPs the domain is hosted on, each with observed window plus network block (start/end, CIDR), company, ASN, geo, `ip_type`.  
 **Batch:** `POST /v1/domains/ip-ranges` with `{"domains":[...]}` (max 100), current-only.  
-Triggered by `available.ipinfo: true` on `/info`. **Never** translate that flag into `/ipinfo`.
+Triggered by `available.ipinfo: true` on `/info`. **Never** translate that flag into `/ipinfo`.  
+Optional follow-up: for each returned hosting IP the user wants classified, call IP reputation (`/v1/ips/...`).
 
 **Code repos** `GET /v1/domains/{domain}/code-repos`  
 Repo is the flagged side. Benign domains appear in security tooling lists. Check `occurrence.validation_status` and evidence context.
@@ -285,7 +351,7 @@ Repo is the flagged side. Benign domains appear in security tooling lists. Check
 **FQDN routes** (no eTLD+1 restriction):  
 `/v1/fqdns/{fqdn}/certificates`, `/dns-records`, `/code-repos` (+ batch POST variants with `{"fqdns":[...]}`).
 
-### 5.6 Errors
+### 5.7 Errors
 
 | Status | Action |
 |--------|--------|
@@ -311,6 +377,7 @@ Batch POST rejects temporal params (`history`, `since`, `until`) with 400.
 - Skip freemail apex pivots (gmail.com, outlook.com, yahoo.com, and similar)
 - Code-repos: keep shallow pivots; repo is flagged, not necessarily the domain
 - Dedupe and normalize inputs before batching
+- IP reputation: still report the API verdict for any IPv4 the user asked about. When expanding from IP `clusters[]`, prefer small high-score clusters. Do not invent IP geolocation from reputation alone.
 
 ---
 
@@ -324,6 +391,8 @@ Batch POST rejects temporal params (`history`, `since`, `until`) with 400.
 | Attack cluster | Related domains by ownership / registrant / certificate identity |
 | Cluster risk | (MALICIOUS members) / total members |
 | Score bands | HIGH / MEDIUM / LOW (and CONFIRMED at cluster/high-conviction levels) |
+| IP reputation | Malanta classification of an IPv4 via `/v1/ips/.../reputation` |
+| IP ranges | Domain hosting / ASN / geo enrichment via `/ip-ranges` (not reputation) |
 
 ---
 
@@ -335,6 +404,7 @@ Batch POST rejects temporal params (`history`, `since`, `until`) with 400.
 |----------|-----|
 | API calls per chain | 20 |
 | Unique domains enriched | 200 |
+| Unique IPs enriched | 200 |
 | Cluster deep dives | 5 (prefer top 3 by score) |
 | WHOIS on members | 5 highest-score |
 | Cache | Reuse reputation per indicator within one investigation |
@@ -354,6 +424,7 @@ Batch POST rejects temporal params (`history`, `since`, `until`) with 400.
 4. GET /v1/domains/{domain}/whois?history=true   } parallel
 5. GET /v1/domains/{domain}/dns-records         }
 Optional: certificates?history=true when available.certificates is true
+Optional: ip-ranges when available.ipinfo is true; then IP reputation on user-selected hosting IPs
 ```
 
 Highlight IOPA. If user only asked "is it malicious?" and verdict is UNKNOWN, stop after info/reputation.
@@ -364,7 +435,7 @@ Highlight IOPA. If user only asked "is it malicious?" and verdict is UNKNOWN, st
 
 ```
 PRE-CHECK: abort if shared-platform apex
-1. GET reputation
+1. GET domain reputation
 2. GET clusters?indicator=
 3. POST /v1/domains/reputation for members (100/batch, respect 200 domain cap)
 4. GET /v1/clusters/{id} for top clusters (cap 3)
@@ -386,23 +457,33 @@ If cluster returns 404: report unresolved id; do not invent membership.
 ### WF-4 Batch Triage
 
 ```
+Domains:
 1. POST /v1/domains/reputation (chunk 100)
 2. Group: IOPA-only, IOC-only, IOPA+IOC, UNKNOWN; sort MALICIOUS by band
-3. Optional: cluster lookup for up to 5 HIGH-band hits; detect shared cluster_id
+3. Optional: cluster lookup for up to 5 HIGH-band domain hits; detect shared cluster_id
+
+IPs:
+1. POST /v1/ips/reputation (chunk 100)
+2. Group the same way
+3. Optional: GET /v1/clusters/{id} for up to 5 HIGH-band hits' top cluster_ids
 ```
+
+Do not mix domains and IPs in one POST body. Split mixed lists into domain batch + IP batch.
 
 ### WF-5 Watchlist Monitoring
 
 ```
-1. POST reputation for watchlist
-2. Diff vs prior: UNKNOWN→MALICIOUS, new labels, new apt_names, new clusters
-3. Use timestamps.last_classified_at for change detection
-4. On new MALICIOUS: run WF-1 / WF-2 with user confirmation
+Domain watchlist: POST /v1/domains/reputation
+IP watchlist: POST /v1/ips/reputation
+Diff vs prior: UNKNOWN→MALICIOUS, new labels, new apt_names, new clusters
+Use timestamps.last_classified_at for change detection
+On new MALICIOUS domain: run WF-1 / WF-2 with user confirmation
+On new MALICIOUS IP: run WF-10 with user confirmation
 ```
 
 ### WF-6 Cross-Investigation Correlation
 
-Match `cluster_id` across cases. Same id = same operator infrastructure. Re-fetch `GET /v1/clusters/{id}` for current membership.
+Match `cluster_id` across cases (including IDs from IP reputation). Same id = same operator infrastructure. Re-fetch `GET /v1/clusters/{id}` for current membership.
 
 ### WF-7 Email-Extracted Domain Enrichment
 
@@ -420,16 +501,48 @@ Prefer cluster `SHARED_REGISTRANT_CLUSTER` over manual WHOIS. Skip privacy and f
 2. If apex is not a shared platform: run WF-1 on eTLD+1
 ```
 
+### WF-10 IP Threat Assessment
+
+**Triggers:** investigate IP / is this IP malicious / IP reputation / deep dive {ip} / check these IPs
+
+**ATOMIC (single IP):**
+
+```
+1. GET /v1/ips/{ip}/reputation
+2. Suggest: GET /v1/clusters/{cluster_id} for top memberships (do not auto-run unless CHAINED)
+```
+
+**ATOMIC (list of IPs):**
+
+```
+1. POST /v1/ips/reputation {"ips":[...]} (chunk 100)
+2. Group IOPA / IOC / both / UNKNOWN; lead with MALICIOUS HIGH
+```
+
+**CHAINED (single IP deep dive):**
+
+```
+1. GET /v1/ips/{ip}/reputation
+2. GET /v1/clusters/{id} for up to 3 highest-score clusters from clusters[]
+3. Optional: POST /v1/domains/reputation on domain members from those clusters (respect domain cap)
+```
+
+Highlight IOPA vs IOC. If user only asked "is it malicious?" and verdict is UNKNOWN, stop after step 1.  
+Do **not** call `/ip-ranges` for a bare IP. Do **not** call domain routes with an IP string.
+
 ### Composition
 
 | From | To |
 |------|----|
 | WF-1 MALICIOUS + clusters | WF-2 or WF-3 |
 | WF-2 cluster found | WF-3 |
-| WF-4 HIGH hits | WF-1 |
-| WF-5 new MALICIOUS | WF-1 + WF-2 |
+| WF-4 HIGH domain hits | WF-1 |
+| WF-4 HIGH IP hits | WF-10 |
+| WF-5 new MALICIOUS domain | WF-1 + WF-2 |
+| WF-5 new MALICIOUS IP | WF-10 |
 | WF-7 MALICIOUS senders | WF-2 |
 | WF-9 apex ok | WF-1 |
+| WF-10 MALICIOUS + clusters | WF-3 |
 
 Max 2 workflow hops in CHAINED mode without user confirmation.
 
@@ -438,6 +551,7 @@ Max 2 workflow hops in CHAINED mode without user confirmation.
 | Error | Behavior |
 |-------|----------|
 | 422 not eTLD+1 | Retry FQDN route if applicable; else skip |
+| 422 cluster indicator is IP | Use IP reputation `clusters[]` + cluster-by-id instead |
 | 429 | Pause, backoff, resume |
 | 404 cluster | Skip; note gap |
 | 500/504 | Retry once; skip step; continue |
@@ -457,17 +571,23 @@ User: "Map infrastructure from evil-login.com"
 
 **C. Batch triage**  
 User: "Check these 20 brand alerts"  
-→ POST reputation → group IOPA / IOC / both → suggest shared-cluster check.
+→ POST domain reputation → group IOPA / IOC / both → suggest shared-cluster check.
 
-**D. Negative routing**  
-User: "Is 203.0.113.45 malicious?" or "What CVEs hit this host?"  
-→ Do not call Malanta API for standalone IP reputation or CVE. State out of scope.  
+**D. IP reputation**  
+User: "Is 203.0.113.45 malicious?"  
+→ `GET /v1/ips/203.0.113.45/reputation` → lead with verdict / labels / APT / clusters.  
+User: "Check these firewall IPs"  
+→ `POST /v1/ips/reputation` with `{"ips":[...]}` → WF-4 IP path.  
 User: `/info` shows `available.ipinfo: true`  
-→ Call `GET /v1/domains/{domain}/ip-ranges`. Do **not** call `/ipinfo`.
+→ Call `GET /v1/domains/{domain}/ip-ranges`. Do **not** call `/ipinfo`. Optionally classify returned hosting IPs with IP reputation.
 
 **E. Shared platform**  
 User: "Expand test-page.vercel.app"  
 → FQDN enrichment only. Do not expand vercel.app apex.
+
+**F. Out of scope**  
+User: "What CVEs hit this host?" or "Geo-locate this IP only"  
+→ State out of scope for CVE / geo-only. Offer IP reputation if classification is useful.
 
 ---
 
@@ -476,10 +596,12 @@ User: "Expand test-page.vercel.app"
 1. Obtain a Malanta API key; store as a secret
 2. Call `https://app.malanta.ai/data/v1/...` with `x-api-key`
 3. Default ATOMIC; enable CHAINED only on explicit request
-4. Enforce batch size 100 and chain caps
-5. Log `meta.request_id` on failures (never log the API key)
-6. Use this skill as the agent reference for Malanta API work
+4. Enforce batch size 100 and chain caps (domains and IPs)
+5. Route IPv4 to `/v1/ips/.../reputation`; route domains to `/v1/domains/...`
+6. Keep `/ip-ranges` for domain hosting only; never invent `/ipinfo`
+7. Log `meta.request_id` on failures (never log the API key)
+8. Use this skill as the agent reference for Malanta API work
 
 ---
 
-*Malanta API Skill v4.0-public*
+*Malanta API Skill v4.1-public*

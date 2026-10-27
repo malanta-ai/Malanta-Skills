@@ -1,17 +1,17 @@
 # Malanta API Skill
 
 **Skill name:** `malanta-api-public`  
-**Version:** 4.0-public  
+**Version:** 4.1-public  
 **API:** Malanta API (`https://app.malanta.ai/data/v1`)
 
-Single-file agent skill for Pre-Attack Prevention investigations: domain reputation, IoPA/IoC labels, attack clusters, campaign expansion, WHOIS/DNS/certificate enrichment, and ATOMIC / CHAINED workflows.
+Single-file agent skill for Pre-Attack Prevention investigations: domain and IP reputation, IoPA/IoC labels, attack clusters, campaign expansion, WHOIS/DNS/certificate enrichment, and ATOMIC / CHAINED workflows.
 
 ## Files in this folder
 
 | File | Use |
 |------|-----|
 | [`SKILL.md`](./SKILL.md) | **Canonical** skill file. Point agents at this. |
-| [`malanta-api-public-v40-SKILL.md`](./malanta-api-public-v40-SKILL.md) | Same content with an explicit versioned filename (handy for packaging or pinning). |
+| [`malanta-api-public-v41-SKILL.md`](./malanta-api-public-v41-SKILL.md) | Same content with an explicit versioned filename (handy for packaging or pinning). |
 
 Load **one** of them (prefer `SKILL.md`). Do not load both into the same agent context.
 
@@ -68,14 +68,14 @@ Works with: custom RAG agents, LangGraph/Crew-style runners, OpenAI Assistants s
 ```
 
 3. Ensure the YAML frontmatter `name` / `description` remain intact (Cursor uses them for discovery).
-4. In chat, invoke by name or describe a Malanta investigation (domain check, deep dive, cluster map).
+4. In chat, invoke by name or describe a Malanta investigation (domain check, IP reputation, deep dive, cluster map).
 5. Put the API key in the project `.env` (gitignored) or OS env; do not commit it.
 
 ### Pattern C - Claude Projects / Custom GPTs / similar
 
 1. Upload `SKILL.md` as project knowledge / instructions file **or** paste it into custom instructions.
 2. Enable web/API or code-execution tools if the product supports outbound HTTPS.
-3. Add a short instruction: “When investigating domains or campaigns with Malanta, follow SKILL.md exactly. Use ATOMIC by default; CHAINED only on deep dive / expand / map.”
+3. Add a short instruction: “When investigating domains, IPs, or campaigns with Malanta, follow SKILL.md exactly. Use ATOMIC by default; CHAINED only on deep dive / expand / map.”
 
 ### Pattern D - CI / automation harness
 
@@ -87,8 +87,8 @@ Works with: custom RAG agents, LangGraph/Crew-style runners, OpenAI Assistants s
 ### Pattern E - MCP or tool-router setups
 
 1. Keep `SKILL.md` as the **policy / routing** layer for the LLM.
-2. Implement thin tools that mirror Malanta routes (`domains/reputation`, `clusters`, etc.) if you prefer structured tool calling over raw `curl`.
-3. The skill still owns: when to call what, ATOMIC vs CHAINED, noise filters, and no invented paths (for example never `/ipinfo` - use `/ip-ranges` when `available.ipinfo` is true).
+2. Implement thin tools that mirror Malanta routes (`domains/reputation`, `ips/reputation`, `clusters`, etc.) if you prefer structured tool calling over raw `curl`.
+3. The skill still owns: when to call what, ATOMIC vs CHAINED, noise filters, and no invented paths (for example never `/ipinfo` - use `/ip-ranges` when `available.ipinfo` is true; use `/v1/ips/.../reputation` for standalone IP classification).
 
 ---
 
@@ -99,9 +99,12 @@ After wiring the skill, run a single ATOMIC check:
 ```bash
 curl -sS "https://app.malanta.ai/data/v1/domains/example.com/info" \
   -H "x-api-key: $MALANTA_API_KEY"
+
+curl -sS "https://app.malanta.ai/data/v1/ips/203.0.113.45/reputation" \
+  -H "x-api-key: $MALANTA_API_KEY"
 ```
 
-Expect a JSON envelope `{ data, query, meta, pagination }`. Then ask the agent: “Using the Malanta API Skill, check example.com” and confirm it calls `/info` or `/reputation` (not invented paths).
+Expect a JSON envelope `{ data, query, meta, pagination }`. Then ask the agent: “Using the Malanta API Skill, check example.com” and “check IP 203.0.113.45” and confirm it calls domain `/info` or `/reputation` and IP `/v1/ips/.../reputation` (not invented paths).
 
 ---
 
@@ -109,9 +112,10 @@ Expect a JSON envelope `{ data, query, meta, pagination }`. Then ask the agent: 
 
 - **ATOMIC** (default): one best endpoint; suggest next steps
 - **CHAINED**: only when the user asks for full investigation / deep dive / expand / map
-- Tier 1 first: reputation + clusters; Tier 2: WHOIS / DNS / certificates / ip-ranges / code-repos
-- Domain routes need eTLD+1; subdomains use `/v1/fqdns/`
-- `available.*` on `/info` are flags, not URL segments (`ipinfo` flag → `/ip-ranges`)
+- Tier 1 first: domain or IP reputation + clusters; Tier 2: WHOIS / DNS / certificates / ip-ranges / code-repos
+- Domain routes need eTLD+1; subdomains use `/v1/fqdns/`; raw IPv4 uses `/v1/ips/`
+- `available.*` on `/info` are flags, not URL segments (`ipinfo` flag → `/ip-ranges`, not IP reputation)
+- **WF-10** covers IP threat assessment (single GET and batch POST)
 
 ---
 
