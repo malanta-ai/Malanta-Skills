@@ -8,7 +8,7 @@ This repository packages skills that any AI agent, IDE harness, or automation ru
 
 | Skill folder | Purpose | Version |
 |--------------|---------|---------|
-| [`malanta-api-skill/`](./malanta-api-skill/) | Malanta API investigation skill (domains, clusters, IoPA/IoC, enrichment) | 4.0-public |
+| [`malanta-api-skill/`](./malanta-api-skill/) | Malanta API investigation skill (domains, IPs, clusters, IoPA/IoC, enrichment) | 4.1-public |
 
 More Malanta skills may be added here over time (one folder per skill).
 
@@ -26,7 +26,7 @@ Malanta Skills/
 └── malanta-api-skill/
     ├── README.md             # How to install and use this skill
     ├── SKILL.md              # Canonical skill definition (load this)
-    └── malanta-api-public-v40-SKILL.md  # Same content, versioned filename
+    └── malanta-api-public-v41-SKILL.md  # Same content, versioned filename
 ```
 
 ## Quick start
