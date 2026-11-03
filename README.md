@@ -9,6 +9,7 @@ This repository packages skills that any AI agent, IDE harness, or automation ru
 | Skill folder | Purpose | Version |
 |--------------|---------|---------|
 | [`malanta-api-skill/`](./malanta-api-skill/) | Malanta API investigation skill (domains, IPs, clusters, IoPA/IoC, enrichment) | 4.1-public |
+| [`malanta-profile-api-skill/`](./malanta-profile-api-skill/) | **BETA** Profile API skill - advanced capabilities + attribution (services, tags, web/functions, TLS, redirects, intelligence) | 1.0-public-beta |
 
 More Malanta skills may be added here over time (one folder per skill).
 
@@ -22,17 +23,21 @@ More Malanta skills may be added here over time (one folder per skill).
 
 ```
 Malanta Skills/
-├── README.md                 # This file
-└── malanta-api-skill/
-    ├── README.md             # How to install and use this skill
-    ├── SKILL.md              # Canonical skill definition (load this)
-    └── malanta-api-public-v41-SKILL.md  # Same content, versioned filename
+├── README.md                      # This file
+├── malanta-api-skill/
+│   ├── README.md                  # How to install and use this skill
+│   ├── SKILL.md                   # Canonical skill definition (load this)
+│   └── malanta-api-public-v41-SKILL.md
+└── malanta-profile-api-skill/
+    ├── README.md
+    ├── SKILL.md
+    └── malanta-profile-api-public-v10-SKILL.md
 ```
 
 ## Quick start
 
 1. Clone or download this repository (public, read-only).
-2. Open the skill folder you need (start with [`malanta-api-skill/`](./malanta-api-skill/)).
+2. Open the skill folder you need ([`malanta-api-skill/`](./malanta-api-skill/) for basic reputation/clusters; [`malanta-profile-api-skill/`](./malanta-profile-api-skill/) for **BETA** advanced capabilities + attribution).
 3. Follow that folder’s README to attach `SKILL.md` to your agent or harness.
 4. Supply a Malanta API key via environment / secrets manager. Never commit keys.
 
